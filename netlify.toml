@@ -1,0 +1,30 @@
+# Netlify configuration for kratecms-reader.
+# This file is the source of truth — settings in the Netlify UI are overridden by what's here.
+
+[build]
+  command = "npm run build"
+  publish = "dist"
+
+# Proxy /api/* to the public KrateCMS instance so the browser sees same-origin requests.
+# This sidesteps the missing CORS headers on the upstream API
+# (tracked at https://github.com/jaballer/kratecms/issues/575).
+# Order matters: this rule MUST come before the SPA fallback below.
+[[redirects]]
+  from = "/api/*"
+  to = "https://kratecms.com/api/:splat"
+  status = 200
+  force = true
+
+# SPA fallback — React Router handles client-side routes like /posts/:id.
+# Without this, hard-navigating or refreshing /posts/34 returns Netlify's 404.
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+
+# Long-cache the fingerprinted Vite output. index.html stays revalidating
+# (no [[headers]] override) so a new deploy is picked up on the next visit.
+[[headers]]
+  for = "/assets/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"

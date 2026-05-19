@@ -2,6 +2,8 @@
 
 A React 19 + TypeScript + Tailwind SPA that reads posts from [KrateCMS](https://github.com/jaballer/kratecms) — a small Laravel-backed content platform — and renders them as a multi-media feed (text, audio, video).
 
+**[Live demo →](https://kratecms-reader.netlify.app)** · [![Netlify Status](https://api.netlify.com/api/v1/badges/site/deploy-status)](https://app.netlify.com/sites/kratecms-reader/deploys) · [![License: MIT](https://img.shields.io/badge/License-MIT-aa3bff.svg)](LICENSE)
+
 Built primarily as a real-world testbed for senior-engineer React patterns: TanStack Query, accessible client-side routing, semantic HTML, focus management on route change, provider-aware media embeds.
 
 ## What's inside
@@ -11,10 +13,11 @@ Built primarily as a real-world testbed for senior-engineer React patterns: TanS
 - **React Router v7** (`createBrowserRouter`) with focus-on-`<h1>` route-change a11y, skip link, semantic landmarks.
 - **Provider-aware media embeds** — YouTube (nocookie), SoundCloud (player URL transformed from share URLs).
 - **Vite dev proxy** to the KrateCMS DDEV instance — no CORS configured upstream, so dev requests are same-origin.
+- **Playwright E2E** — 12 specs covering filter behavior, focus-on-route-change, aria-current pagination, skip link, 404, console-cleanliness.
 
 ## How to run
 
-You need a reachable KrateCMS instance. The dev proxy currently points at `https://kratecms.ddev.site`.
+You need a reachable KrateCMS instance. The dev proxy currently points at `https://kratecms.ddev.site`; the deployed site at [kratecms-reader.netlify.app](https://kratecms-reader.netlify.app) proxies to `https://kratecms.com` via [`netlify.toml`](netlify.toml).
 
 ```bash
 npm install
@@ -23,7 +26,26 @@ npm run dev
 
 Opens at `http://localhost:5173`. The `/api/v1/*` calls are proxied to the configured Krate origin — see [vite.config.ts](vite.config.ts).
 
-To target a different KrateCMS deployment, edit `KRATE_ORIGIN` in `vite.config.ts`. For production builds, you'll need real CORS on the API or a same-origin reverse proxy (Worker / Vercel rewrite / Nginx).
+To target a different KrateCMS deployment, edit `KRATE_ORIGIN` in `vite.config.ts`. For production builds, the [`netlify.toml`](netlify.toml) edge proxy handles same-origin forwarding to `kratecms.com`.
+
+## Tests
+
+Playwright E2E suite — 12 specs across 4 files. Run from the project root:
+
+```bash
+npm run e2e          # headless, against the local dev server
+npm run e2e:ui       # Playwright UI mode for debugging
+npm run e2e:prod     # smoke-test the deployed Netlify URL
+```
+
+The config auto-starts the Vite dev server when running locally — no separate `npm run dev` needed in another terminal. See [playwright.config.ts](playwright.config.ts).
+
+| Spec | Covers |
+|---|---|
+| [e2e/homepage.spec.ts](e2e/homepage.spec.ts) | Post list renders, category filter toggles `aria-pressed`, pagination updates `aria-current` |
+| [e2e/detail.spec.ts](e2e/detail.spec.ts) | Click-through to `/posts/:id`, focus moves to the H1, iframe `title` attribute |
+| [e2e/errors.spec.ts](e2e/errors.spec.ts) | Missing post id renders 404 alert with no retry button; unknown route shows page-not-found |
+| [e2e/a11y.spec.ts](e2e/a11y.spec.ts) | First Tab reveals the skip link; landmark count; no console errors on a typical browse session |
 
 ## Project structure
 
@@ -79,6 +101,8 @@ When the upstream is fixed, the unbox helper, the proxy, and the SoundCloud tran
 | Client-side category filter | API ignores `?category=` ([kratecms#577](https://github.com/jaballer/kratecms/issues/577)). Acceptable at 18 posts; flagged in code. |
 | Tailwind v4 `@theme` | CSS custom properties become utility classes for free. Dark mode + light mode share one variable set. |
 | No CSS-in-JS, no UI kit | Showing the work, not pulling shadcn. |
+| Playwright over Vitest + Testing Library | The high-value tests for this app are end-to-end (routing, focus, pagination). Vitest would be overkill for the 2-3 pure helpers (`unbox`, `youtubeIdFromUrl`). Would add Vitest if the API client grew. |
+| Netlify Edge Proxy over per-request CORS | The upstream API doesn't ship CORS headers ([kratecms#575](https://github.com/jaballer/kratecms/issues/575)). The proxy makes the browser see same-origin requests; works dev and prod with no code branches. |
 
 ## A11y notes
 
@@ -92,9 +116,10 @@ When the upstream is fixed, the unbox helper, the proxy, and the SoundCloud tran
 
 - **Auth / writes** — read-only by design.
 - **SSR / SEO** — pure SPA. If indexability matters, switch to Next.js App Router or Astro.
-- **Tests** — would add Playwright for the navigation + filter flows and Vitest for the unbox/transform helpers.
-- **Production CORS story** — the Vite proxy is a dev convenience. Production needs real CORS upstream or a same-origin reverse proxy.
+- **Vitest unit tests** — the high-leverage tests for this app are end-to-end, which Playwright covers. Would add Vitest if the API client grows beyond the current `unbox`/`youtubeIdFromUrl` helpers.
+- **CI workflow** — `.github/workflows/e2e.yml` running Playwright on PRs would be the natural next step.
+- **Visual regression** — Percy / Chromatic-style snapshot diffing isn't wired up; the OG card and component grid could benefit.
 
 ## License
 
-MIT.
+[MIT](LICENSE).

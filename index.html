@@ -2,13 +2,49 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+    <title>Krate Reader — multi-media posts from the KrateCMS API</title>
     <meta
       name="description"
-      content="A React 19 reading experience built on top of the KrateCMS API."
+      content="A React 19 + Tailwind SPA reading multi-media posts from the KrateCMS API — text, audio, and video, with accessible client-side routing."
     />
-    <title>Krate Reader</title>
+
+    <!-- Icons -->
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+
+    <!-- Theme + color scheme -->
+    <meta name="theme-color" content="#aa3bff" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#16171d" media="(prefers-color-scheme: dark)" />
+    <meta name="color-scheme" content="light dark" />
+
+    <!-- Open Graph — https://ogp.me -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Krate Reader" />
+    <meta property="og:title" content="Krate Reader" />
+    <meta
+      property="og:description"
+      content="A React 19 + Tailwind SPA reading multi-media posts from the KrateCMS API — text, audio, and video, with accessible client-side routing."
+    />
+    <meta property="og:url" content="https://kratecms-reader.netlify.app/" />
+    <meta property="og:image" content="https://kratecms-reader.netlify.app/og.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="Krate Reader — React 19 + TanStack Query SPA against the KrateCMS API" />
+
+    <!-- Twitter Cards — https://developer.x.com/en/docs/x-for-websites/cards/ -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Krate Reader" />
+    <meta
+      name="twitter:description"
+      content="A React 19 + Tailwind SPA reading multi-media posts from the KrateCMS API — text, audio, and video, with accessible client-side routing."
+    />
+    <meta name="twitter:image" content="https://kratecms-reader.netlify.app/og.png" />
+    <meta name="twitter:image:alt" content="Krate Reader — React 19 + TanStack Query SPA against the KrateCMS API" />
+
+    <!-- Canonical -->
+    <link rel="canonical" href="https://kratecms-reader.netlify.app/" />
   </head>
   <body>
     <div id="root"></div>

@@ -1,6 +1,6 @@
 # Krate Reader
 
-A React 19 + TypeScript + Tailwind SPA that reads multi-media posts (text, audio, video) from [KrateCMS](https://github.com/jaballer/kratecms) — a small Laravel-backed CMS — and serves them as a fast, accessible, deploy-preview-friendly experience on Netlify.
+A React 19 + TypeScript + Tailwind SPA that reads multi-media posts (text, audio, video) from the [KrateCMS](https://kratecms.com) REST API and serves them as a fast, accessible, deploy-preview-friendly experience on Netlify.
 
 **[Live demo →](https://kratecms-reader.netlify.app)** · [![Netlify Status](https://api.netlify.com/api/v1/badges/site/deploy-status)](https://app.netlify.com/sites/kratecms-reader/deploys) · [![License: MIT](https://img.shields.io/badge/License-MIT-aa3bff.svg)](LICENSE)
 
@@ -8,16 +8,18 @@ A React 19 + TypeScript + Tailwind SPA that reads multi-media posts (text, audio
 
 ## Why this exists
 
-I built and run my own headless CMS ([KrateCMS](https://github.com/jaballer/kratecms)) but had no public reader for it. Rather than wait for the perfect spec, I shipped a senior-engineer-quality React frontend against the live API and used it as a forcing function to do everything I'd want a "real" product to do: design tokens, semantic HTML, accessible routing, an E2E test suite, social meta, a Netlify edge proxy for the missing-CORS case, and end-to-end deploy previews on every PR.
+[KrateCMS](https://kratecms.com) is a Laravel 11 + Livewire multi-tenant CMS I built and run — it ships its own public web frontend and is approaching alpha. I built **a second consumer** in React for three reasons:
 
-Along the way I found seven real upstream API bugs in my own CMS and filed each with a curl repro + a Laravel-shaped fix. Two are already merged.
+1. **Dogfood the API.** A separate frontend stresses the API differently than the first-party Livewire UI does. Building this surfaced eight real enhancement opportunities I filed back upstream as issues with curl repros and Laravel-shaped fixes ([details below](#upstream-issues-filed)) — two are already merged.
+2. **Work both sides of the stack.** My background is primarily PHP and content-management work, and I wanted hands-on production React/TypeScript experience in a context I genuinely care about. KrateCMS gave me a real reason to ship across the boundary instead of building a contrived demo: same product, two stacks, same standard of craft.
+3. **Have a real React portfolio piece.** Not a tutorial repo — a deployed product, with its own tests, deploy previews, social meta, accessibility wiring, and decisions I can defend.
 
 ## Highlights
 
 What's worth looking at if you only have 60 seconds:
 
 - **Accessibility wired through to E2E** — focus moves to the `<h1>` on every route change, filter chips expose `aria-pressed`, pagination exposes `aria-current="page"`, the skip link is reachable on the first Tab. All of it asserted in [Playwright specs](e2e/) (21 total).
-- **Slug-based URLs without API support** — KrateCMS only exposes detail-by-id; the React app routes `/posts/:slug` and resolves to a post client-side from a cached merged list. Legacy `/posts/:id` URLs `<Navigate replace>` to the canonical slug. Decimal-id detection is guarded by a strict regex (a Codex review caught that `Number("0x22") === 34` would otherwise misroute).
+- **Slug-based URLs, client-side resolved** — KrateCMS's polymorphic `/posts/{slug}` was a 404 at the time of writing (now partially shipped — see [kratecms#576](https://github.com/jaballer/kratecms/issues/576)). The React app routes `/posts/:slug` and resolves to a post client-side from a cached merged list. Legacy `/posts/:id` URLs `<Navigate replace>` to the canonical slug. Decimal-id detection is guarded by a strict `/^\d+$/` regex — Codex caught that `Number("0x22") === 34` would otherwise misroute, and the same `ctype_digit` discipline now mirrors on the Laravel side of the stack.
 - **Best-effort multi-page fetch** — `Promise.allSettled` for pages 2+, so a transient backend hiccup doesn't break the detail page for a post on page 1.
 - **Provider-aware media embeds** — YouTube via `youtube-nocookie.com`, SoundCloud via the `w.soundcloud.com/player/?url=…` transform (the raw share URL is blocked by `X-Frame-Options`), forward-compatible `<audio>` rendering ready for an upstream API field that's still in flight.
 - **Real CORS strategy that survives prod** — the Vite dev proxy and the [`netlify.toml`](netlify.toml) edge proxy do the same thing on different layers; the React app sees same-origin `/api/*` requests in both dev and prod, no code branches.
@@ -156,7 +158,7 @@ A side effect of building a real consumer against an in-progress API: I found se
 |---|---|---|
 | [kratecms#574](https://github.com/jaballer/kratecms/issues/574) | `meta.*` returned as `[v, v]` arrays instead of scalars | Open — unboxed client-side |
 | [kratecms#575](https://github.com/jaballer/kratecms/issues/575) | CORS preflight missing `Access-Control-Allow-Origin` | Partially merged — code shipped, prod env var pending |
-| [kratecms#576](https://github.com/jaballer/kratecms/issues/576) | `/posts/{slug}` returns 404; detail is id-only | Open — slug-routing workaround in `PostDetailPage` |
+| [kratecms#576](https://github.com/jaballer/kratecms/issues/576) | `/posts/{slug}` returns 404; detail is id-only | Partially shipped — `/posts/by-slug/{slug}` alias works in prod; polymorphic route exists locally. Reader currently uses cached-list resolution; could switch to a single-request `by-slug` fetch as a follow-up. |
 | [kratecms#577](https://github.com/jaballer/kratecms/issues/577) | Query filters silently ignored | Open — client-side filter |
 | [kratecms#578](https://github.com/jaballer/kratecms/issues/578) | SoundCloud `embed_url` is a share URL (blocked by `X-Frame-Options`) | Open — provider transform in [MediaEmbed.tsx](src/components/MediaEmbed.tsx) |
 | [kratecms#579](https://github.com/jaballer/kratecms/issues/579) | `author.email` exposed on public response | Open — never rendered in UI |
@@ -169,7 +171,7 @@ Built collaboratively with [Claude Code](https://docs.claude.com/en/docs/claude-
 
 ## What's next
 
-- **Slug routing in the API** — once [kratecms#576](https://github.com/jaballer/kratecms/issues/576) lands, the merged-list workaround can be replaced with a direct `/posts/:slug` fetch (one request instead of pages).
+- **Switch the slug fetch to the `by-slug` alias** — KrateCMS already exposes `/api/v1/posts/by-slug/{slug}` in production, which would replace the cached-list workaround with a single-request lookup. Holding off until the polymorphic `/posts/{slug}` route ships ([kratecms#576](https://github.com/jaballer/kratecms/issues/576)) so the React side switches once, not twice.
 - **Server-side filter + search** — depends on [kratecms#577](https://github.com/jaballer/kratecms/issues/577). The chip UI is ready; just needs a real API behind it.
 - **Native audio player** — depends on [kratecms#581](https://github.com/jaballer/kratecms/issues/581). React side is already wired.
 - **CI workflow** — `.github/workflows/e2e.yml` running Playwright on PRs would be a natural next step.

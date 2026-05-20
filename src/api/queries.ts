@@ -1,10 +1,5 @@
 import { queryOptions } from "@tanstack/react-query";
-import {
-  getPostById,
-  listAllPosts,
-  listPosts,
-  type ListPostsParams,
-} from "./client";
+import { getPost, listPosts, type ListPostsParams } from "./client";
 
 export const postsQuery = (params: ListPostsParams = {}) =>
   queryOptions({
@@ -14,19 +9,18 @@ export const postsQuery = (params: ListPostsParams = {}) =>
   });
 
 /**
- * Merged all-pages list — used by the detail page to resolve a slug to a
- * post. Separate from `postsQuery` so the list page only pays for one page.
+ * Detail query. Param can be a numeric id OR a slug — the upstream route
+ * is polymorphic. The component canonicalizes the URL to the slug form
+ * after the response arrives.
  */
-export const allPostsQuery = () =>
+export const postQuery = (idOrSlug: string) =>
   queryOptions({
-    queryKey: ["posts", "all"],
-    queryFn: () => listAllPosts(),
+    queryKey: ["posts", "detail", idOrSlug],
+    queryFn: () => getPost(idOrSlug),
     staleTime: 60_000,
-  });
-
-export const postQuery = (id: number | string) =>
-  queryOptions({
-    queryKey: ["posts", "detail", String(id)],
-    queryFn: () => getPostById(id),
-    staleTime: 60_000,
+    // Don't auto-retry 404s — refetching won't make the post exist.
+    retry: (failureCount, error) => {
+      if (error instanceof Error && error.message.includes("404")) return false;
+      return failureCount < 1;
+    },
   });

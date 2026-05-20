@@ -1,94 +1,54 @@
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useRef } from "react";
 import { Link, Navigate, useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { allPostsQuery } from "../api/queries";
+import { postQuery } from "../api/queries";
 import { Spinner } from "../components/Spinner";
 import { ErrorState } from "../components/ErrorState";
 import { CategoryBadge } from "../components/CategoryBadge";
 import { MediaEmbed } from "../components/MediaEmbed";
+import { ApiError } from "../api/client";
 import { formatDate, formatDateTimeAttr } from "../lib/format";
-import type { Post } from "../api/types";
-
-interface SlugLookup {
-  post: Post | null;
-  /** True when the URL param was a numeric id — we should redirect to the slug URL. */
-  needsCanonicalRedirect: boolean;
-}
-
-// Strict decimal — anchored, digits only, no leading zeros enforced.
-// Critically, `Number()` would parse "0x22" as 34 and "1e2" as 100, which
-// happen to be real post ids — that would silently redirect unknown slugs
-// to bogus canonical URLs. Regex first, Number() only after.
-const LEGACY_ID_PATTERN = /^\d+$/;
-
-function findPost(posts: Post[], param: string): SlugLookup {
-  // Slug match wins (the canonical URL form)
-  const bySlug = posts.find((p) => p.slug === param);
-  if (bySlug) return { post: bySlug, needsCanonicalRedirect: false };
-
-  // Legacy /posts/:id URL — only when the param is strictly decimal digits.
-  // Redirect to slug for SEO + bookmark canonicalization.
-  if (LEGACY_ID_PATTERN.test(param)) {
-    const numericId = Number(param);
-    const byId = posts.find((p) => p.id === numericId);
-    if (byId) return { post: byId, needsCanonicalRedirect: true };
-  }
-
-  return { post: null, needsCanonicalRedirect: false };
-}
 
 export function PostDetailPage() {
   const { slug } = useParams<{ slug: string }>();
   const titleRef = useRef<HTMLHeadingElement>(null);
 
   const { data, isLoading, isError, error, refetch } = useQuery({
-    ...allPostsQuery(),
+    ...postQuery(slug ?? ""),
     enabled: !!slug,
   });
 
-  const lookup = useMemo<SlugLookup>(
-    () =>
-      data && slug
-        ? findPost(data, slug)
-        : { post: null, needsCanonicalRedirect: false },
-    [data, slug],
-  );
-
   // Move focus to the title on route change for screen-reader users.
   useEffect(() => {
-    if (lookup.post && titleRef.current) titleRef.current.focus();
-  }, [lookup.post]);
+    if (data && titleRef.current) titleRef.current.focus();
+  }, [data]);
 
   if (isLoading) return <Spinner label="Loading post" />;
 
   if (isError) {
+    const status = error instanceof ApiError ? error.status : undefined;
     return (
       <ErrorState
-        title="Could not load post"
+        title={status === 404 ? "Post not found" : "Could not load post"}
         message={
           error instanceof Error ? error.message : "Unknown error from the API."
         }
-        onRetry={() => refetch()}
+        // 404s won't be fixed by retrying; suppress the button to keep the UI honest.
+        onRetry={status === 404 ? undefined : () => refetch()}
       />
     );
   }
 
-  // Redirect legacy /posts/:id to canonical /posts/:slug. `replace` so the
-  // legacy URL doesn't end up in browser history.
-  if (lookup.post && lookup.needsCanonicalRedirect) {
-    return <Navigate to={`/posts/${lookup.post.slug}`} replace />;
-  }
+  if (!data) return null;
 
-  if (!lookup.post) {
-    return (
-      <ErrorState
-        title="Post not found"
-        message={`No post matches "${slug ?? ""}".`}
-      />
-    );
+  // Canonicalize the URL. The polymorphic API accepts either id or slug; the
+  // canonical URL form is the slug. If the user arrived via a legacy
+  // /posts/:id (or any non-slug input the server resolved), redirect them so
+  // bookmarks, social shares, and SEO all point at the same place. `replace`
+  // means the legacy URL doesn't end up in browser history.
+  if (slug && slug !== data.slug) {
+    return <Navigate to={`/posts/${data.slug}`} replace />;
   }
-
-  const post = lookup.post;
 
   return (
     <article aria-labelledby="post-title">
@@ -101,13 +61,13 @@ export function PostDetailPage() {
 
       <header className="mt-4 mb-6">
         <div className="mb-3 flex items-center gap-3 text-sm text-fg">
-          <CategoryBadge category={post.category} />
-          <time dateTime={formatDateTimeAttr(post.published_at)}>
-            {formatDate(post.published_at)}
+          <CategoryBadge category={data.category} />
+          <time dateTime={formatDateTimeAttr(data.published_at)}>
+            {formatDate(data.published_at)}
           </time>
           <span aria-hidden="true">·</span>
           <span>
-            By <span className="text-fg-strong">{post.author.name}</span>
+            By <span className="text-fg-strong">{data.author.name}</span>
           </span>
         </div>
 
@@ -117,29 +77,29 @@ export function PostDetailPage() {
           tabIndex={-1}
           className="font-heading text-3xl leading-tight tracking-tight text-fg-strong outline-none sm:text-4xl"
         >
-          {post.title}
+          {data.title}
         </h1>
 
-        {post.excerpt ? (
-          <p className="mt-4 text-lg text-fg">{post.excerpt}</p>
+        {data.excerpt ? (
+          <p className="mt-4 text-lg text-fg">{data.excerpt}</p>
         ) : null}
       </header>
 
-      {post.featured_image ? (
+      {data.featured_image ? (
         <img
-          src={post.featured_image}
-          alt={post.featured_image_alt ?? ""}
+          src={data.featured_image}
+          alt={data.featured_image_alt ?? ""}
           className="mb-8 aspect-video w-full rounded-lg border border-border object-cover"
           loading="eager"
           decoding="async"
         />
       ) : null}
 
-      <MediaEmbed post={post} />
+      <MediaEmbed post={data} />
 
       <div
         className="prose-krate max-w-3xl text-fg"
-        dangerouslySetInnerHTML={{ __html: post.content }}
+        dangerouslySetInnerHTML={{ __html: data.content }}
       />
     </article>
   );

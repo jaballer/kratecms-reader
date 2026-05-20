@@ -57,6 +57,12 @@ function normalizeMeta(meta: RawPaginationMeta): PaginationMeta {
 
 export interface ListPostsParams {
   page?: number;
+  /**
+   * One of the server-side category enum values: `text`, `audio`, `video`,
+   * `uncategorized`. Server validates and returns 422 for unknown values.
+   * Added in https://github.com/jaballer/kratecms/pull/584.
+   */
+  category?: string;
 }
 
 export async function listPosts(
@@ -64,6 +70,7 @@ export async function listPosts(
 ): Promise<PaginatedResponse<Post>> {
   const query = new URLSearchParams();
   if (params.page && params.page > 1) query.set("page", String(params.page));
+  if (params.category) query.set("category", params.category);
   const qs = query.toString();
   const raw = await request<RawPaginatedResponse<Post>>(
     `/posts${qs ? `?${qs}` : ""}`,
@@ -71,53 +78,16 @@ export async function listPosts(
   return { ...raw, meta: normalizeMeta(raw.meta) };
 }
 
-export async function getPostById(id: number | string): Promise<Post> {
-  const res = await request<SingleResponse<Post>>(`/posts/${id}`);
-  return res.data;
-}
-
 /**
- * Fetch every page of posts and return one flat list.
+ * Fetch a single post by id OR slug — the upstream route is polymorphic
+ * (https://github.com/jaballer/kratecms/pull/584). Digit-only segments
+ * route by id; everything else routes by slug.
  *
- * Why: the kratecms API doesn't support detail lookup by slug
- * (https://github.com/jaballer/kratecms/issues/576). The detail page
- * resolves slug → post client-side from this merged list. The list
- * response already includes the full `content` field, so there's no
- * separate detail fetch.
- *
- * Failure mode: page 1 is required — without it we have nothing to
- * resolve against — so it throws. Pages 2+ are best-effort via
- * Promise.allSettled, so a transient failure on page 7 doesn't break
- * the detail page for a post on page 1. A user navigating to a slug
- * on a failed page will see the standard "Post not found" alert.
- *
- * Acceptable while the dataset is small (currently 18 posts / 2 pages).
- * If the catalog grows past ~5 pages, switch to a server-side slug route.
+ * Returns 404 if neither matches (handled by ApiError in the consumer).
  */
-export async function listAllPosts(): Promise<Post[]> {
-  const first = await listPosts({ page: 1 });
-  const all: Post[] = [...first.data];
-
-  const remaining = first.meta.last_page - 1;
-  if (remaining <= 0) return all;
-
-  // Fetch pages 2..last in parallel; tolerate individual failures.
-  const pages = Array.from({ length: remaining }, (_, i) => i + 2);
-  const results = await Promise.allSettled(
-    pages.map((page) => listPosts({ page })),
+export async function getPost(idOrSlug: number | string): Promise<Post> {
+  const res = await request<SingleResponse<Post>>(
+    `/posts/${encodeURIComponent(String(idOrSlug))}`,
   );
-
-  for (const [i, result] of results.entries()) {
-    if (result.status === "fulfilled") {
-      all.push(...result.value.data);
-    } else {
-      console.warn(
-        `[kratecms] failed to fetch posts page ${pages[i]}; skipping. ` +
-          `Detail pages for posts on this page will 404 until the next refresh.`,
-        result.reason,
-      );
-    }
-  }
-
-  return all;
+  return res.data;
 }

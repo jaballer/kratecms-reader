@@ -18,17 +18,26 @@ export interface Post {
   featured_image: string | null;
   featured_image_alt: string | null;
   youtube_link: string | null;
+  /**
+   * Absolute URL to a native audio file (e.g. an MP3). Shipped by kratecms
+   * in https://github.com/jaballer/kratecms/pull/589 (closes kratecms#581).
+   * Null for posts without an attached audio file — including some
+   * `category: "audio"` posts that use an `embed_url` (e.g. SoundCloud)
+   * instead, and conversely present on some non-audio posts that happen
+   * to have a companion audio file. Always check this field directly;
+   * don't gate on `category`.
+   */
+  audio_url: string | null;
+  /**
+   * Human-friendly label for the audio file. The kratecms admin lets
+   * authors set this freely — values in production range from
+   * `"Memories.mp3"` (actual filename) to `"Fake It Till I Make It"`
+   * (no extension). Treat as a display label / aria-label, NOT as a
+   * reliable file extension or download filename.
+   */
+  audio_filename: string | null;
   embed_url: string | null;
   embed_provider: string | null;
-  /**
-   * Native audio file URL — currently NOT exposed by the kratecms API but
-   * tracked at https://github.com/jaballer/kratecms/issues/581. Once the
-   * field lands, MediaEmbed will render an <audio> player for any category
-   * (typically `audio`) post that ships one. Optional so the type is
-   * forward-compatible.
-   */
-  audio_url?: string | null;
-  audio_mime_type?: string | null;
   status: PostStatus;
   published_at: string;
   created_at: string;

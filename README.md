@@ -88,7 +88,7 @@ The config auto-starts the Vite dev server when running locally — no separate 
 | Spec | What it covers |
 |---|---|
 | [e2e/homepage.spec.ts](e2e/homepage.spec.ts) | List renders, category filter toggles `aria-pressed`, server-side filter sends `?category=`, pagination updates `aria-current` |
-| [e2e/detail.spec.ts](e2e/detail.spec.ts) | Click-through to `/posts/:slug`, focus moves to H1, iframe `title` attribute, single API call per detail view, legacy `/posts/:id` redirect |
+| [e2e/detail.spec.ts](e2e/detail.spec.ts) | Click-through to `/posts/:slug`, focus moves to H1, iframe `title` attribute, single API call per detail view, legacy `/posts/:id` redirect, native `<audio>` rendered for posts with `audio_url`, SoundCloud fallback for audio posts without one |
 | [e2e/errors.spec.ts](e2e/errors.spec.ts) | 404 alert without retry; crafted non-decimal ids (`0x22`, `1e2`, `+34`, `34.0`) don't trigger a redirect |
 | [e2e/a11y.spec.ts](e2e/a11y.spec.ts) | First Tab reveals the skip link; landmark count; no console errors on a typical browse session |
 
@@ -133,7 +133,7 @@ vite.config.ts        Dev proxy to KrateCMS
 | React Router v7 data router (`createBrowserRouter`) | The current API; `<Navigate>`, `<ScrollRestoration />`, nested layouts via `<Outlet />` come built-in. |
 | Slug URLs via the polymorphic API route | After [kratecms#584](https://github.com/jaballer/kratecms/pull/584), `/api/v1/posts/{post}` resolves either id or slug — one HTTP request per detail page, canonical-URL redirect when an id was supplied. |
 | Server-side category filter | After [kratecms#584](https://github.com/jaballer/kratecms/pull/584), `?category=audio` filters at the database layer and composes with pagination. The chip group is a thin URL-state UI; no client-side `.filter()`. |
-| Native `<audio>` for audio posts (forward-compat) | KrateCMS API doesn't expose the file URL yet ([kratecms#581](https://github.com/jaballer/kratecms/issues/581) — tracked here as [kratecms-reader#4](https://github.com/jaballer/kratecms-reader/issues/4)). The `Post` type and `MediaEmbed` already declare and render the `audio_url` field; once upstream ships it, audio-category posts get a real `<audio>` player with no React-side changes. |
+| Native `<audio>` for any post with an `audio_url` | After [kratecms#589](https://github.com/jaballer/kratecms/pull/589), the API exposes `audio_url` and `audio_filename`. `MediaEmbed` renders `<audio controls>` whenever `audio_url` is present — gated on the **field**, not the category, because the API permits an audio file on any post (including some `category: "video"` ones). `audio_filename` is treated as a display label (some are real filenames like `Memories.mp3`, others are titles like `Fake It Till I Make It`), surfaced in the `aria-label` and a small `figcaption`. |
 | Tailwind v4 `@theme` for design tokens | CSS custom properties become utility classes for free. Light and dark mode share one variable set. |
 | Playwright over Vitest + Testing Library | The high-leverage tests for this app are end-to-end (routing, focus, pagination, filter). Vitest would be overkill for the 2-3 pure helpers (`unbox`, `youtubeIdFromUrl`). Would add Vitest if the API client grows. |
 | Netlify edge proxy over per-request CORS | The upstream API didn't ship CORS headers initially ([kratecms#575](https://github.com/jaballer/kratecms/issues/575), since partially closed). The proxy makes the browser see same-origin requests in both dev and prod with no code branches. |
@@ -163,7 +163,7 @@ A side effect of building a real consumer against an in-progress API: I found se
 | [kratecms#578](https://github.com/jaballer/kratecms/issues/578) | SoundCloud `embed_url` is a share URL (blocked by `X-Frame-Options`) | Open — provider transform in [MediaEmbed.tsx](src/components/MediaEmbed.tsx) |
 | [kratecms#579](https://github.com/jaballer/kratecms/issues/579) | `author.email` exposed on public response | Open — never rendered in UI |
 | [kratecms#580](https://github.com/jaballer/kratecms/issues/580) | Public reads return `Cache-Control: no-cache, private` | Open — TanStack Query covers the gap for now |
-| [kratecms#581](https://github.com/jaballer/kratecms/issues/581) | Audio-category posts don't expose the file URL | Open — render path ready in [MediaEmbed.tsx](src/components/MediaEmbed.tsx) |
+| [kratecms#581](https://github.com/jaballer/kratecms/issues/581) | Audio-category posts don't expose the file URL | ✅ Closed by [kratecms#589](https://github.com/jaballer/kratecms/pull/589) — reader renders native `<audio>` via `audio_url` + `audio_filename` |
 
 ## How I built this
 
@@ -171,9 +171,9 @@ Built collaboratively with [Claude Code](https://docs.claude.com/en/docs/claude-
 
 ## What's next
 
-- **Native audio player** — depends on [kratecms#581](https://github.com/jaballer/kratecms/issues/581) (tracked here as [kratecms-reader#4](https://github.com/jaballer/kratecms-reader/issues/4)). React side is already wired; ships behind the data.
 - **URL-driven filter + page state** — move the active category and current page into `useSearchParams` so `/?category=audio&page=2` is shareable and survives refresh.
 - **Search** — full-text or title-prefix search would be a small reader feature backed by a new upstream filter param.
+- **API write parity** — `StorePostRequest` / `UpdatePostRequest` upstream don't yet validate `audio_url` / `audio_filename` (flagged in [kratecms#589](https://github.com/jaballer/kratecms/pull/589) as a follow-up). If the reader ever grows authoring affordances, this is the gap to close.
 - **CI workflow** — `.github/workflows/e2e.yml` running Playwright on PRs would be a natural next step.
 - **Visual regression** — the OG card + grid layout could be pinned with Percy or Chromatic-style snapshot diffing.
 

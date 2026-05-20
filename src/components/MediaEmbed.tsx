@@ -46,27 +46,37 @@ function shouldRenderSecondaryEmbed(post: Post, hasAudio: boolean): boolean {
 
 function AudioPlayer({ post }: { post: Post }) {
   if (!post.audio_url) return null;
+
+  // audio_filename is a human-friendly label set in the kratecms admin —
+  // sometimes a real filename ("Memories.mp3"), sometimes just a display
+  // name ("Fake It Till I Make It"). Use whatever the author set; fall
+  // back to the post title.
+  const label = post.audio_filename?.trim() || post.title;
+
   return (
     <figure className="my-6">
       <audio
         controls
         preload="metadata"
         src={post.audio_url}
-        aria-label={`Audio for ${post.title}`}
+        aria-label={`Audio: ${label}`}
         className="w-full"
       >
-        {post.audio_mime_type ? (
-          <source src={post.audio_url} type={post.audio_mime_type} />
-        ) : null}
+        {/* Fallback for browsers that don't support <audio>. */}
         Your browser doesn't support embedded audio.{" "}
         <a
           href={post.audio_url}
           className="text-accent underline underline-offset-2"
         >
-          Download the file
+          Download {label}
         </a>
         .
       </audio>
+      {post.audio_filename ? (
+        <figcaption className="mt-2 text-xs text-fg">
+          ♪ {post.audio_filename}
+        </figcaption>
+      ) : null}
     </figure>
   );
 }

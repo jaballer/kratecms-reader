@@ -68,22 +68,26 @@ test.describe("Post detail navigation", () => {
     await expect(iframe).toHaveAttribute("title", /YouTube video/);
   });
 
-  test("page-1 post still renders when a later list page fetch fails", async ({ page }) => {
-    // Regression: listAllPosts() used to throw on any single page failure,
-    // breaking the detail page even for posts on page 1. After the fix,
-    // page 2+ failures are best-effort and the detail page renders fine
-    // for posts on the pages that did load.
-    // Flagged by Codex in PR #1, second review.
-    await page.route(/\/api\/v1\/posts\?page=2/, (route) => route.abort());
+  test("detail page issues a single API call (polymorphic slug route)", async ({ page }) => {
+    // After adopting kratecms#584, the detail page fetches /posts/:slug
+    // directly instead of merging every list page. One API request per
+    // detail view, not last_page+1 of them.
+    const apiCalls: string[] = [];
+    page.on("request", (req) => {
+      const url = req.url();
+      if (url.includes("/api/v1/posts")) apiCalls.push(url);
+    });
 
     await page.goto(`/posts/${KRATECMS_POST_SLUG}`);
-
-    // The H1 should still render — KrateCMS post is on page 1
     await expect(
       page.getByRole("heading", { level: 1 }),
     ).toContainText(/KrateCMS/);
-    // And no error alert
-    await expect(page.getByRole("alert")).toHaveCount(0);
+
+    // Exactly one /api/v1/posts request, and it ends in the slug.
+    expect(apiCalls).toHaveLength(1);
+    expect(apiCalls[0]).toMatch(
+      new RegExp(`/api/v1/posts/${KRATECMS_POST_SLUG}$`),
+    );
   });
 
   test("an audio-category post with no native audio_url still renders the YouTube fallback", async ({ page }) => {

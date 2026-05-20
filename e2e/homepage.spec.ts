@@ -43,8 +43,35 @@ test.describe("Homepage", () => {
     const badges = page.locator("main article >> text=audio");
     await expect(badges.first()).toBeVisible();
 
-    // The live "X shown" indicator updates
-    await expect(page.getByText(/\d+ shown/)).toBeVisible();
+    // The live total indicator shows the server-filtered count
+    // (e.g. "4 audio posts"). Phrasing covers both "1 audio post" and
+    // "N audio posts" via the optional `s`.
+    await expect(page.getByText(/\d+ audio posts?/)).toBeVisible();
+  });
+
+  test("category filter is applied server-side (request carries ?category=)", async ({ page }) => {
+    const filteredRequests: string[] = [];
+    page.on("request", (req) => {
+      const url = req.url();
+      if (url.includes("/api/v1/posts") && url.includes("category=")) {
+        filteredRequests.push(url);
+      }
+    });
+
+    await page.goto("/");
+    await page
+      .getByRole("group", { name: "Filter by category" })
+      .getByRole("button", { name: /^audio/ })
+      .click();
+
+    // Wait for the filtered request to land
+    await page.waitForResponse(
+      (r) => r.url().includes("category=audio") && r.status() === 200,
+    );
+
+    // At least one request carried the category param (initial render is
+    // unfiltered, so 1+ filtered requests after the click).
+    expect(filteredRequests.some((u) => /category=audio/.test(u))).toBe(true);
   });
 
   test("pagination has aria-current and a disabled prev on page 1", async ({ page }) => {

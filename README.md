@@ -88,6 +88,7 @@ These are upstream issues in the API that this reader works around. Each has a t
 | [kratecms#578](https://github.com/jaballer/kratecms/issues/578) | SoundCloud `embed_url` is a share URL, blocked by `X-Frame-Options` | Provider transform in [src/components/MediaEmbed.tsx](src/components/MediaEmbed.tsx) |
 | [kratecms#579](https://github.com/jaballer/kratecms/issues/579) | `author.email` exposed on public response | Never rendered in UI |
 | [kratecms#580](https://github.com/jaballer/kratecms/issues/580) | Public reads return `Cache-Control: no-cache, private` | TanStack Query in-memory cache covers it for now |
+| [kratecms#581](https://github.com/jaballer/kratecms/issues/581) | `category: "audio"` posts have a native MP3 on kratecms.com but the file URL isn't in the API response | Type + render path live in [MediaEmbed.tsx](src/components/MediaEmbed.tsx); ships behind the data |
 
 When the upstream is fixed, the unbox helper, the proxy, and the SoundCloud transform can be removed.
 
@@ -97,7 +98,8 @@ When the upstream is fixed, the unbox helper, the proxy, and the SoundCloud tran
 |---|---|
 | TanStack Query over `Suspense + use()` | Caching, retries, `keepPreviousData`, devtools — all things `use()` would force you to reinvent. |
 | React Router v7 over TanStack Router | Battle-tested. The `data router` (`createBrowserRouter`) is the current API. |
-| Route by id, not slug | KrateCMS detail endpoint is id-only ([kratecms#576](https://github.com/jaballer/kratecms/issues/576)). |
+| Slug URLs (client-side resolution) | KrateCMS detail endpoint is id-only ([kratecms#576](https://github.com/jaballer/kratecms/issues/576)). We fetch the merged list once and resolve `slug → post` in memory. Legacy `/posts/:id` URLs `<Navigate replace>` to the canonical slug. Acceptable at ~18 posts; would move to a server-side slug route at scale. |
+| Native `<audio>` for audio posts | KrateCMS API doesn't expose the file URL yet ([kratecms#581](https://github.com/jaballer/kratecms/issues/581)). The `Post` type and `MediaEmbed` already declare and render the `audio_url` field; once upstream ships it, audio-category posts get a real `<audio>` player with no further React-side changes. |
 | Client-side category filter | API ignores `?category=` ([kratecms#577](https://github.com/jaballer/kratecms/issues/577)). Acceptable at 18 posts; flagged in code. |
 | Tailwind v4 `@theme` | CSS custom properties become utility classes for free. Dark mode + light mode share one variable set. |
 | No CSS-in-JS, no UI kit | Showing the work, not pulling shadcn. |

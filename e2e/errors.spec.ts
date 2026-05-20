@@ -23,6 +23,21 @@ test.describe("Error states", () => {
     await expect(page).toHaveURL(/\/posts\/99999$/);
   });
 
+  // Regression: Number("0x22") === 34, Number("1e2") === 100. If the
+  // legacy-id branch used Number() without a strict-decimal guard, these
+  // crafted URLs would silently redirect to real posts (id 34 and 100).
+  // Each case below should land on the 404 alert. Flagged by Codex in PR #1.
+  // We only assert on the alert, not the URL — a redirect would never
+  // produce an alert, and URL-encoding makes pattern matching brittle.
+  for (const tricky of ["0x22", "1e2", "0x1f", "+34", "34.0"]) {
+    test(`crafted non-decimal "${tricky}" does NOT redirect to a real post`, async ({ page }) => {
+      await page.goto(`/posts/${encodeURIComponent(tricky)}`);
+      const alert = page.getByRole("alert");
+      await expect(alert).toBeVisible();
+      await expect(alert).toContainText(/Post not found/);
+    });
+  }
+
   test("an unknown route shows the page-not-found error element", async ({ page }) => {
     await page.goto("/this-route-does-not-exist");
 

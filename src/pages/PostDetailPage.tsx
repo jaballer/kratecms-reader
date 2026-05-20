@@ -15,14 +15,21 @@ interface SlugLookup {
   needsCanonicalRedirect: boolean;
 }
 
+// Strict decimal — anchored, digits only, no leading zeros enforced.
+// Critically, `Number()` would parse "0x22" as 34 and "1e2" as 100, which
+// happen to be real post ids — that would silently redirect unknown slugs
+// to bogus canonical URLs. Regex first, Number() only after.
+const LEGACY_ID_PATTERN = /^\d+$/;
+
 function findPost(posts: Post[], param: string): SlugLookup {
   // Slug match wins (the canonical URL form)
   const bySlug = posts.find((p) => p.slug === param);
   if (bySlug) return { post: bySlug, needsCanonicalRedirect: false };
 
-  // Numeric param → legacy /posts/:id URL. Redirect to slug for SEO + bookmarks.
-  const numericId = Number(param);
-  if (Number.isFinite(numericId)) {
+  // Legacy /posts/:id URL — only when the param is strictly decimal digits.
+  // Redirect to slug for SEO + bookmark canonicalization.
+  if (LEGACY_ID_PATTERN.test(param)) {
+    const numericId = Number(param);
     const byId = posts.find((p) => p.id === numericId);
     if (byId) return { post: byId, needsCanonicalRedirect: true };
   }

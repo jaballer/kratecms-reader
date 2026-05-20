@@ -31,7 +31,7 @@ export function PostCard({ post }: PostCardProps) {
 
       <h2 className="font-heading text-xl leading-snug text-fg-strong">
         <Link
-          to={`/posts/${post.id}`}
+          to={`/posts/${post.slug}`}
           className="no-underline before:absolute before:inset-0"
         >
           {post.title}

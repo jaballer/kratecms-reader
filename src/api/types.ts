@@ -20,6 +20,15 @@ export interface Post {
   youtube_link: string | null;
   embed_url: string | null;
   embed_provider: string | null;
+  /**
+   * Native audio file URL — currently NOT exposed by the kratecms API but
+   * tracked at https://github.com/jaballer/kratecms/issues/581. Once the
+   * field lands, MediaEmbed will render an <audio> player for any category
+   * (typically `audio`) post that ships one. Optional so the type is
+   * forward-compatible.
+   */
+  audio_url?: string | null;
+  audio_mime_type?: string | null;
   status: PostStatus;
   published_at: string;
   created_at: string;

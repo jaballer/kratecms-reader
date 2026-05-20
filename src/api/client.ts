@@ -75,3 +75,27 @@ export async function getPostById(id: number | string): Promise<Post> {
   const res = await request<SingleResponse<Post>>(`/posts/${id}`);
   return res.data;
 }
+
+/**
+ * Fetch every page of posts and return one flat list.
+ *
+ * Why: the kratecms API doesn't support detail lookup by slug
+ * (https://github.com/jaballer/kratecms/issues/576). The detail page
+ * resolves slug → post client-side from this merged list. The list
+ * response already includes the full `content` field, so there's no
+ * separate detail fetch.
+ *
+ * Acceptable while the dataset is small (currently 18 posts / 2 pages).
+ * If the catalog grows past ~5 pages, switch to a server-side slug route.
+ */
+export async function listAllPosts(): Promise<Post[]> {
+  const first = await listPosts({ page: 1 });
+  const all: Post[] = [...first.data];
+
+  for (let page = 2; page <= first.meta.last_page; page++) {
+    const next = await listPosts({ page });
+    all.push(...next.data);
+  }
+
+  return all;
+}

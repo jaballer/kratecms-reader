@@ -28,7 +28,9 @@ const router = createBrowserRouter([
     ),
     children: [
       { index: true, element: <PostListPage /> },
-      { path: "posts/:id", element: <PostDetailPage /> },
+      // :slug accepts either a slug or a numeric id; numeric ids redirect
+      // to the canonical slug URL inside PostDetailPage.
+      { path: "posts/:slug", element: <PostDetailPage /> },
     ],
   },
 ]);

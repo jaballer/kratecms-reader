@@ -37,7 +37,7 @@ test.describe("Accessibility baselines", () => {
 
     await page.goto("/");
     await page.locator("main article").first().getByRole("link").first().click();
-    await page.waitForURL(/\/posts\/\d+/);
+    await page.waitForURL(/\/posts\/[a-z0-9-]+/);
     await page.getByRole("link", { name: /All posts/i }).click();
     await page.waitForURL("/");
 

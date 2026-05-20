@@ -1,4 +1,4 @@
-import type { Post } from "../api/types";
+import type { Post, PostCategory } from "../api/types";
 
 function youtubeIdFromUrl(url: string): string | null {
   try {
@@ -32,67 +32,120 @@ interface MediaEmbedProps {
   post: Post;
 }
 
-export function MediaEmbed({ post }: MediaEmbedProps) {
-  if (post.youtube_link) {
-    const id = youtubeIdFromUrl(post.youtube_link);
-    if (!id) return null;
+/**
+ * Decide what (if anything) to render below an audio file. An audio-category
+ * post often has BOTH a native MP3 *and* a YouTube/SoundCloud reference for
+ * the same track. Showing both is redundant — prefer the native audio and
+ * suppress the secondary embed. For non-audio posts the YouTube/embed_url
+ * is the primary content and should still render.
+ */
+function shouldRenderSecondaryEmbed(post: Post, hasAudio: boolean): boolean {
+  if (!hasAudio) return true;
+  return (post.category as PostCategory) !== "audio";
+}
+
+function AudioPlayer({ post }: { post: Post }) {
+  if (!post.audio_url) return null;
+  return (
+    <figure className="my-6">
+      <audio
+        controls
+        preload="metadata"
+        src={post.audio_url}
+        aria-label={`Audio for ${post.title}`}
+        className="w-full"
+      >
+        {post.audio_mime_type ? (
+          <source src={post.audio_url} type={post.audio_mime_type} />
+        ) : null}
+        Your browser doesn't support embedded audio.{" "}
+        <a
+          href={post.audio_url}
+          className="text-accent underline underline-offset-2"
+        >
+          Download the file
+        </a>
+        .
+      </audio>
+    </figure>
+  );
+}
+
+function YouTubeEmbed({ post }: { post: Post }) {
+  if (!post.youtube_link) return null;
+  const id = youtubeIdFromUrl(post.youtube_link);
+  if (!id) return null;
+  return (
+    <div className="my-6 aspect-video overflow-hidden rounded-lg border border-border bg-black">
+      <iframe
+        src={`https://www.youtube-nocookie.com/embed/${id}`}
+        title={`YouTube video for ${post.title}`}
+        loading="lazy"
+        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+        allowFullScreen
+        className="h-full w-full border-0"
+      />
+    </div>
+  );
+}
+
+function ProviderEmbed({ post }: { post: Post }) {
+  if (!post.embed_url) return null;
+
+  if (isSoundCloud(post)) {
     return (
-      <div className="my-6 aspect-video overflow-hidden rounded-lg border border-border bg-black">
+      <div className="my-6 overflow-hidden rounded-lg border border-border">
         <iframe
-          src={`https://www.youtube-nocookie.com/embed/${id}`}
-          title={`YouTube video for ${post.title}`}
+          src={soundcloudPlayerUrl(post.embed_url)}
+          title={`SoundCloud player for ${post.title}`}
           loading="lazy"
-          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-          allowFullScreen
-          className="h-full w-full border-0"
+          allow="autoplay"
+          className="block h-40 w-full border-0"
         />
       </div>
     );
   }
 
-  if (post.embed_url) {
-    if (isSoundCloud(post)) {
-      return (
-        <div className="my-6 overflow-hidden rounded-lg border border-border">
-          <iframe
-            src={soundcloudPlayerUrl(post.embed_url)}
-            title={`SoundCloud player for ${post.title}`}
-            loading="lazy"
-            allow="autoplay"
-            className="block h-40 w-full border-0"
-          />
-        </div>
-      );
-    }
+  // Unknown provider — try the iframe, plus a fallback link in case the host
+  // blocks framing (X-Frame-Options / CSP).
+  return (
+    <figure className="my-6">
+      <div className="overflow-hidden rounded-lg border border-border">
+        <iframe
+          src={post.embed_url}
+          title={`${post.embed_provider ?? "Embedded"} content for ${post.title}`}
+          loading="lazy"
+          allow="autoplay; clipboard-write; encrypted-media"
+          className="block h-40 w-full border-0"
+        />
+      </div>
+      <figcaption className="mt-2 text-xs text-fg">
+        Can't see the embed?{" "}
+        <a
+          href={post.embed_url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-accent underline underline-offset-2"
+        >
+          Open on {post.embed_provider ?? "the original site"}
+        </a>
+        .
+      </figcaption>
+    </figure>
+  );
+}
 
-    // Unknown provider — try the embed, but show a fallback link in case the
-    // host blocks framing (X-Frame-Options / CSP).
-    return (
-      <figure className="my-6">
-        <div className="overflow-hidden rounded-lg border border-border">
-          <iframe
-            src={post.embed_url}
-            title={`${post.embed_provider ?? "Embedded"} content for ${post.title}`}
-            loading="lazy"
-            allow="autoplay; clipboard-write; encrypted-media"
-            className="block h-40 w-full border-0"
-          />
-        </div>
-        <figcaption className="mt-2 text-xs text-fg">
-          Can't see the embed?{" "}
-          <a
-            href={post.embed_url}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-accent underline underline-offset-2"
-          >
-            Open on {post.embed_provider ?? "the original site"}
-          </a>
-          .
-        </figcaption>
-      </figure>
-    );
-  }
+export function MediaEmbed({ post }: MediaEmbedProps) {
+  const hasAudio = !!post.audio_url;
+  const showSecondary = shouldRenderSecondaryEmbed(post, hasAudio);
 
-  return null;
+  return (
+    <>
+      <AudioPlayer post={post} />
+      {showSecondary && post.youtube_link ? <YouTubeEmbed post={post} /> : null}
+      {showSecondary && post.embed_url && !post.youtube_link ? (
+        <ProviderEmbed post={post} />
+      ) : null}
+    </>
+  );
 }

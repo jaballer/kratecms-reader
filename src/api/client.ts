@@ -85,6 +85,12 @@ export async function getPostById(id: number | string): Promise<Post> {
  * response already includes the full `content` field, so there's no
  * separate detail fetch.
  *
+ * Failure mode: page 1 is required — without it we have nothing to
+ * resolve against — so it throws. Pages 2+ are best-effort via
+ * Promise.allSettled, so a transient failure on page 7 doesn't break
+ * the detail page for a post on page 1. A user navigating to a slug
+ * on a failed page will see the standard "Post not found" alert.
+ *
  * Acceptable while the dataset is small (currently 18 posts / 2 pages).
  * If the catalog grows past ~5 pages, switch to a server-side slug route.
  */
@@ -92,9 +98,25 @@ export async function listAllPosts(): Promise<Post[]> {
   const first = await listPosts({ page: 1 });
   const all: Post[] = [...first.data];
 
-  for (let page = 2; page <= first.meta.last_page; page++) {
-    const next = await listPosts({ page });
-    all.push(...next.data);
+  const remaining = first.meta.last_page - 1;
+  if (remaining <= 0) return all;
+
+  // Fetch pages 2..last in parallel; tolerate individual failures.
+  const pages = Array.from({ length: remaining }, (_, i) => i + 2);
+  const results = await Promise.allSettled(
+    pages.map((page) => listPosts({ page })),
+  );
+
+  for (const [i, result] of results.entries()) {
+    if (result.status === "fulfilled") {
+      all.push(...result.value.data);
+    } else {
+      console.warn(
+        `[kratecms] failed to fetch posts page ${pages[i]}; skipping. ` +
+          `Detail pages for posts on this page will 404 until the next refresh.`,
+        result.reason,
+      );
+    }
   }
 
   return all;

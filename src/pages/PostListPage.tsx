@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { useQuery, keepPreviousData } from "@tanstack/react-query";
 import { postsQuery } from "../api/queries";
 import { PostCard } from "../components/PostCard";
@@ -7,30 +7,27 @@ import { ErrorState } from "../components/ErrorState";
 import { CategoryFilter } from "../components/CategoryFilter";
 import { Pagination } from "../components/Pagination";
 
+// Server-side enum (https://github.com/jaballer/kratecms/pull/584 —
+// PostApiRequest validates against this list). Slow-changing, worth
+// hard-coding so the chip group is consistent regardless of which
+// categories happen to be on the current page.
+const CATEGORIES = ["audio", "text", "video", "uncategorized"] as const;
+
 export function PostListPage() {
   const [page, setPage] = useState(1);
   const [category, setCategory] = useState<string | null>(null);
 
   const { data, isLoading, isError, error, refetch, isFetching } = useQuery({
-    ...postsQuery({ page }),
+    ...postsQuery({ page, category: category ?? undefined }),
     placeholderData: keepPreviousData,
   });
 
-  const visiblePosts = useMemo(() => {
-    if (!data) return [];
-    if (!category) return data.data;
-    return data.data.filter((p) => p.category === category);
-  }, [data, category]);
-
-  const { categories, counts } = useMemo(() => {
-    const set = new Set<string>();
-    const counter: Record<string, number> = {};
-    for (const p of data?.data ?? []) {
-      set.add(p.category);
-      counter[p.category] = (counter[p.category] ?? 0) + 1;
-    }
-    return { categories: [...set].sort(), counts: counter };
-  }, [data]);
+  // Changing the filter should reset to page 1 — otherwise a user on
+  // page 2 of "all" who clicks "audio" lands on an empty page 2 of audio.
+  const handleCategoryChange = (next: string | null) => {
+    setCategory(next);
+    setPage(1);
+  };
 
   return (
     <section aria-labelledby="page-title">
@@ -62,27 +59,27 @@ export function PostListPage() {
         <>
           <div className="mb-6 flex items-center justify-between gap-4">
             <CategoryFilter
-              categories={categories}
+              categories={CATEGORIES}
               active={category}
-              onChange={setCategory}
-              counts={counts}
-              total={data.data.length}
+              onChange={handleCategoryChange}
             />
             <div
               aria-live="polite"
               className="text-xs tabular-nums text-fg"
             >
-              {isFetching ? "Refreshing…" : `${visiblePosts.length} shown`}
+              {isFetching
+                ? "Refreshing…"
+                : `${data.meta.total} ${category ?? "total"} post${data.meta.total === 1 ? "" : "s"}`}
             </div>
           </div>
 
-          {visiblePosts.length === 0 ? (
+          {data.data.length === 0 ? (
             <p className="rounded-lg border border-dashed border-border p-8 text-center text-fg">
               No posts in this category.
             </p>
           ) : (
             <ul className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
-              {visiblePosts.map((post) => (
+              {data.data.map((post) => (
                 <li key={post.id} className="contents">
                   <PostCard post={post} />
                 </li>

@@ -1,36 +1,79 @@
 # Krate Reader
 
-A React 19 + TypeScript + Tailwind SPA that reads posts from [KrateCMS](https://github.com/jaballer/kratecms) — a small Laravel-backed content platform — and renders them as a multi-media feed (text, audio, video).
+A React 19 + TypeScript + Tailwind SPA that reads multi-media posts (text, audio, video) from [KrateCMS](https://github.com/jaballer/kratecms) — a small Laravel-backed CMS — and serves them as a fast, accessible, deploy-preview-friendly experience on Netlify.
 
 **[Live demo →](https://kratecms-reader.netlify.app)** · [![Netlify Status](https://api.netlify.com/api/v1/badges/site/deploy-status)](https://app.netlify.com/sites/kratecms-reader/deploys) · [![License: MIT](https://img.shields.io/badge/License-MIT-aa3bff.svg)](LICENSE)
 
-Built primarily as a real-world testbed for senior-engineer React patterns: TanStack Query, accessible client-side routing, semantic HTML, focus management on route change, provider-aware media embeds.
+![Krate Reader — React 19 + TanStack Query SPA against the KrateCMS API](public/og.png)
 
-## What's inside
+## Why this exists
 
-- **Vite + React 19 + TypeScript + Tailwind v4** — current-gen stack, fast HMR, design tokens via `@theme`.
-- **TanStack Query** for caching, `keepPreviousData` pagination, status-aware error handling.
-- **React Router v7** (`createBrowserRouter`) with focus-on-`<h1>` route-change a11y, skip link, semantic landmarks.
-- **Provider-aware media embeds** — YouTube (nocookie), SoundCloud (player URL transformed from share URLs).
-- **Vite dev proxy** to the KrateCMS DDEV instance — no CORS configured upstream, so dev requests are same-origin.
-- **Playwright E2E** — 12 specs covering filter behavior, focus-on-route-change, aria-current pagination, skip link, 404, console-cleanliness.
+I built and run my own headless CMS ([KrateCMS](https://github.com/jaballer/kratecms)) but had no public reader for it. Rather than wait for the perfect spec, I shipped a senior-engineer-quality React frontend against the live API and used it as a forcing function to do everything I'd want a "real" product to do: design tokens, semantic HTML, accessible routing, an E2E test suite, social meta, a Netlify edge proxy for the missing-CORS case, and end-to-end deploy previews on every PR.
+
+Along the way I found seven real upstream API bugs in my own CMS and filed each with a curl repro + a Laravel-shaped fix. Two are already merged.
+
+## Highlights
+
+What's worth looking at if you only have 60 seconds:
+
+- **Accessibility wired through to E2E** — focus moves to the `<h1>` on every route change, filter chips expose `aria-pressed`, pagination exposes `aria-current="page"`, the skip link is reachable on the first Tab. All of it asserted in [Playwright specs](e2e/) (21 total).
+- **Slug-based URLs without API support** — KrateCMS only exposes detail-by-id; the React app routes `/posts/:slug` and resolves to a post client-side from a cached merged list. Legacy `/posts/:id` URLs `<Navigate replace>` to the canonical slug. Decimal-id detection is guarded by a strict regex (a Codex review caught that `Number("0x22") === 34` would otherwise misroute).
+- **Best-effort multi-page fetch** — `Promise.allSettled` for pages 2+, so a transient backend hiccup doesn't break the detail page for a post on page 1.
+- **Provider-aware media embeds** — YouTube via `youtube-nocookie.com`, SoundCloud via the `w.soundcloud.com/player/?url=…` transform (the raw share URL is blocked by `X-Frame-Options`), forward-compatible `<audio>` rendering ready for an upstream API field that's still in flight.
+- **Real CORS strategy that survives prod** — the Vite dev proxy and the [`netlify.toml`](netlify.toml) edge proxy do the same thing on different layers; the React app sees same-origin `/api/*` requests in both dev and prod, no code branches.
+- **Honest tradeoff documentation** — the [Decisions & tradeoffs](#decisions--tradeoffs) table below names what I considered and rejected, not just what I picked.
+
+## Built on Netlify
+
+The Netlify-specific work lives in [`netlify.toml`](netlify.toml):
+
+```toml
+[build]
+  command = "npm run build"
+  publish = "dist"
+
+# Proxies /api/* server-side to https://kratecms.com so the browser sees
+# same-origin requests (sidesteps the missing-CORS case until the
+# upstream config lands in production).
+[[redirects]]
+  from = "/api/*"
+  to   = "https://kratecms.com/api/:splat"
+  status = 200
+  force  = true
+
+# SPA fallback: client-side routes like /posts/fake-it-till-i-make-it
+# return index.html instead of Netlify's 404.
+[[redirects]]
+  from = "/*"
+  to   = "/index.html"
+  status = 200
+
+# Vite outputs fingerprinted filenames — safe to cache forever.
+[[headers]]
+  for = "/assets/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
+```
+
+What this gives the project:
+
+- **No CORS branching** between dev and prod — the React app fetches `/api/*` in both environments. The Vite dev proxy and the Netlify edge proxy resolve it on different layers.
+- **Deep links work on refresh** — `/posts/hiking-bars` reloads cleanly instead of 404'ing at the CDN.
+- **Cache tuned per surface** — `index.html` is `must-revalidate` (new deploys picked up instantly), `/assets/*` are immutable for a year (so the React bundle is served from the edge after first hit).
+- **Deploy preview on every PR** — Netlify's GitHub integration spun up a preview environment for [PR #1](https://github.com/jaballer/kratecms-reader/pull/1) automatically, which let me sanity-check the slug routing against real content before merging.
 
 ## How to run
 
-You need a reachable KrateCMS instance. The dev proxy currently points at `https://kratecms.ddev.site`; the deployed site at [kratecms-reader.netlify.app](https://kratecms-reader.netlify.app) proxies to `https://kratecms.com` via [`netlify.toml`](netlify.toml).
-
 ```bash
 npm install
-npm run dev
+npm run dev          # http://localhost:5173
 ```
 
-Opens at `http://localhost:5173`. The `/api/v1/*` calls are proxied to the configured Krate origin — see [vite.config.ts](vite.config.ts).
-
-To target a different KrateCMS deployment, edit `KRATE_ORIGIN` in `vite.config.ts`. For production builds, the [`netlify.toml`](netlify.toml) edge proxy handles same-origin forwarding to `kratecms.com`.
+Vite proxies `/api/v1/*` to `https://kratecms.ddev.site` for local development (configurable in [`vite.config.ts`](vite.config.ts)). For production, the [`netlify.toml`](netlify.toml) edge proxy forwards to `https://kratecms.com`.
 
 ## Tests
 
-Playwright E2E suite — 12 specs across 4 files. Run from the project root:
+Playwright E2E suite — 21 specs across 4 files.
 
 ```bash
 npm run e2e          # headless, against the local dev server
@@ -38,13 +81,13 @@ npm run e2e:ui       # Playwright UI mode for debugging
 npm run e2e:prod     # smoke-test the deployed Netlify URL
 ```
 
-The config auto-starts the Vite dev server when running locally — no separate `npm run dev` needed in another terminal. See [playwright.config.ts](playwright.config.ts).
+The config auto-starts the Vite dev server when running locally — no separate `npm run dev` needed.
 
-| Spec | Covers |
+| Spec | What it covers |
 |---|---|
-| [e2e/homepage.spec.ts](e2e/homepage.spec.ts) | Post list renders, category filter toggles `aria-pressed`, pagination updates `aria-current` |
-| [e2e/detail.spec.ts](e2e/detail.spec.ts) | Click-through to `/posts/:id`, focus moves to the H1, iframe `title` attribute |
-| [e2e/errors.spec.ts](e2e/errors.spec.ts) | Missing post id renders 404 alert with no retry button; unknown route shows page-not-found |
+| [e2e/homepage.spec.ts](e2e/homepage.spec.ts) | List renders, category filter toggles `aria-pressed`, pagination updates `aria-current` |
+| [e2e/detail.spec.ts](e2e/detail.spec.ts) | Click-through to `/posts/:slug`, focus moves to H1, iframe `title` attribute, page-1 post still renders on page-2 fetch failure, legacy `/posts/:id` redirect |
+| [e2e/errors.spec.ts](e2e/errors.spec.ts) | 404 alert without retry; crafted non-decimal ids (`0x22`, `1e2`, `+34`, `34.0`) don't trigger a redirect |
 | [e2e/a11y.spec.ts](e2e/a11y.spec.ts) | First Tab reveals the skip link; landmark count; no console errors on a typical browse session |
 
 ## Project structure
@@ -53,7 +96,7 @@ The config auto-starts the Vite dev server when running locally — no separate 
 src/
   api/
     types.ts          Post, Author, pagination types (raw + normalized)
-    client.ts         fetch wrapper, ApiError, meta unboxing
+    client.ts         fetch wrapper, ApiError, meta unboxing, multi-page merge
     queries.ts        TanStack Query queryOptions
   components/
     Layout.tsx        Header, footer, <Outlet />, skip link
@@ -61,66 +104,76 @@ src/
     CategoryBadge.tsx
     CategoryFilter.tsx
     Pagination.tsx
-    MediaEmbed.tsx    Provider-aware (YouTube + SoundCloud)
+    MediaEmbed.tsx    Provider-aware: <audio>, YouTube, SoundCloud, generic iframe
     Spinner.tsx
     ErrorState.tsx
   pages/
     PostListPage.tsx
-    PostDetailPage.tsx
+    PostDetailPage.tsx  Slug → post lookup, legacy-id redirect
   lib/
     cn.ts             clsx + tailwind-merge
     format.ts         Intl date formatting
   App.tsx             Router + QueryClient
   main.tsx
   index.css           Tailwind + design tokens + a11y resets
+
+e2e/                  Playwright specs
+netlify.toml          Build, edge proxy, SPA fallback, headers
+playwright.config.ts  Test config (localhost + deployed-URL modes)
+vite.config.ts        Dev proxy to KrateCMS
 ```
 
-## Known KrateCMS API quirks (with filed issues)
-
-These are upstream issues in the API that this reader works around. Each has a tracking issue in the [kratecms repo](https://github.com/jaballer/kratecms/issues?q=is%3Aissue+label%3Aarea%3Aapi):
-
-| # | Issue | Workaround here |
-|---|---|---|
-| [kratecms#574](https://github.com/jaballer/kratecms/issues/574) | `meta.{current_page,last_page,per_page,total}` returned as `[v, v]` arrays | `unbox()` in [src/api/client.ts](src/api/client.ts) |
-| [kratecms#575](https://github.com/jaballer/kratecms/issues/575) | CORS preflight missing `Access-Control-Allow-Origin` | Vite dev proxy in [vite.config.ts](vite.config.ts) |
-| [kratecms#576](https://github.com/jaballer/kratecms/issues/576) | `/posts/{slug}` returns 404, detail is id-only | Routes use `/posts/:id` |
-| [kratecms#577](https://github.com/jaballer/kratecms/issues/577) | Query filters (`?category=`, `?slug=`) silently ignored | Client-side filter on cached page (acceptable at ~18 posts; would break at scale) |
-| [kratecms#578](https://github.com/jaballer/kratecms/issues/578) | SoundCloud `embed_url` is a share URL, blocked by `X-Frame-Options` | Provider transform in [src/components/MediaEmbed.tsx](src/components/MediaEmbed.tsx) |
-| [kratecms#579](https://github.com/jaballer/kratecms/issues/579) | `author.email` exposed on public response | Never rendered in UI |
-| [kratecms#580](https://github.com/jaballer/kratecms/issues/580) | Public reads return `Cache-Control: no-cache, private` | TanStack Query in-memory cache covers it for now |
-| [kratecms#581](https://github.com/jaballer/kratecms/issues/581) | `category: "audio"` posts have a native MP3 on kratecms.com but the file URL isn't in the API response | Type + render path live in [MediaEmbed.tsx](src/components/MediaEmbed.tsx); ships behind the data |
-
-When the upstream is fixed, the unbox helper, the proxy, and the SoundCloud transform can be removed.
-
-## Tech-stack rationale
+## Decisions & tradeoffs
 
 | Decision | Why |
 |---|---|
-| TanStack Query over `Suspense + use()` | Caching, retries, `keepPreviousData`, devtools — all things `use()` would force you to reinvent. |
-| React Router v7 over TanStack Router | Battle-tested. The `data router` (`createBrowserRouter`) is the current API. |
-| Slug URLs (client-side resolution) | KrateCMS detail endpoint is id-only ([kratecms#576](https://github.com/jaballer/kratecms/issues/576)). We fetch the merged list once and resolve `slug → post` in memory. Legacy `/posts/:id` URLs `<Navigate replace>` to the canonical slug. Acceptable at ~18 posts; would move to a server-side slug route at scale. |
-| Native `<audio>` for audio posts | KrateCMS API doesn't expose the file URL yet ([kratecms#581](https://github.com/jaballer/kratecms/issues/581)). The `Post` type and `MediaEmbed` already declare and render the `audio_url` field; once upstream ships it, audio-category posts get a real `<audio>` player with no further React-side changes. |
-| Client-side category filter | API ignores `?category=` ([kratecms#577](https://github.com/jaballer/kratecms/issues/577)). Acceptable at 18 posts; flagged in code. |
-| Tailwind v4 `@theme` | CSS custom properties become utility classes for free. Dark mode + light mode share one variable set. |
-| No CSS-in-JS, no UI kit | Showing the work, not pulling shadcn. |
-| Playwright over Vitest + Testing Library | The high-value tests for this app are end-to-end (routing, focus, pagination). Vitest would be overkill for the 2-3 pure helpers (`unbox`, `youtubeIdFromUrl`). Would add Vitest if the API client grew. |
-| Netlify Edge Proxy over per-request CORS | The upstream API doesn't ship CORS headers ([kratecms#575](https://github.com/jaballer/kratecms/issues/575)). The proxy makes the browser see same-origin requests; works dev and prod with no code branches. |
+| TanStack Query over `Suspense + use()` | Caching, retries, `keepPreviousData`, devtools — all things `use()` would force me to reinvent. |
+| React Router v7 data router (`createBrowserRouter`) | The current API; `<Navigate>`, `<ScrollRestoration />`, nested layouts via `<Outlet />` come built-in. |
+| Slug URLs (client-side resolution) | KrateCMS detail endpoint is id-only ([kratecms#576](https://github.com/jaballer/kratecms/issues/576)). I fetch the merged list once and resolve `slug → post` in memory. Legacy `/posts/:id` URLs `<Navigate replace>` to the canonical slug. Acceptable at ~18 posts; would move to a server-side slug route at scale. |
+| Native `<audio>` for audio posts (forward-compat) | KrateCMS API doesn't expose the file URL yet ([kratecms#581](https://github.com/jaballer/kratecms/issues/581)). The `Post` type and `MediaEmbed` already declare and render the `audio_url` field; once upstream ships it, audio-category posts get a real `<audio>` player with no React-side changes. |
+| Client-side category filter | API ignores `?category=` ([kratecms#577](https://github.com/jaballer/kratecms/issues/577)). Acceptable at the current dataset size; flagged in code with a TODO link to the issue. |
+| Tailwind v4 `@theme` for design tokens | CSS custom properties become utility classes for free. Light and dark mode share one variable set. |
+| Playwright over Vitest + Testing Library | The high-leverage tests for this app are end-to-end (routing, focus, pagination, filter). Vitest would be overkill for the 2-3 pure helpers (`unbox`, `youtubeIdFromUrl`). Would add Vitest if the API client grows. |
+| Netlify edge proxy over per-request CORS | The upstream API didn't ship CORS headers initially ([kratecms#575](https://github.com/jaballer/kratecms/issues/575), since partially closed). The proxy makes the browser see same-origin requests in both dev and prod with no code branches. |
+| No CSS-in-JS, no UI kit | Showing the work — `cn` helper + Tailwind tokens + native HTML elements where they exist (`<audio>`, `<time>`, `<details>`-style patterns). |
 
-## A11y notes
+## Accessibility
 
 - Skip link in [Layout.tsx](src/components/Layout.tsx) jumps focus to `<main id="main">`.
-- Focus moves to the page `<h1>` on route change ([PostDetailPage.tsx](src/pages/PostDetailPage.tsx) — `useEffect` + `tabIndex={-1}`). Screen reader users hear the new title.
+- Focus moves to the page `<h1>` on every route change ([PostDetailPage.tsx](src/pages/PostDetailPage.tsx) — `useEffect` + `tabIndex={-1}`). Screen reader users hear the new title immediately.
 - `aria-pressed` on filter chips, `aria-current="page"` on pagination, `role="alert"` on errors, `aria-live` on the "X shown" indicator.
-- `prefers-reduced-motion` honored globally (CSS reset) and per-component (Tailwind `motion-reduce:`).
-- Featured images use `loading="lazy"` + empty `alt=""` fallback when `featured_image_alt` is missing (decorative).
+- `prefers-reduced-motion` honored globally (CSS reset) and per-component (Tailwind `motion-reduce:` variants).
+- Featured images use `loading="lazy"` + meaningful `alt` text from the CMS, with `alt=""` fallback when the field is empty (decorative).
+- All embed iframes have a `title` attribute describing the content.
 
-## What's not here
+The Playwright suite asserts the focus pattern, the ARIA attributes, the skip-link behavior, and a "no console errors on a typical browse session" baseline.
 
-- **Auth / writes** — read-only by design.
-- **SSR / SEO** — pure SPA. If indexability matters, switch to Next.js App Router or Astro.
-- **Vitest unit tests** — the high-leverage tests for this app are end-to-end, which Playwright covers. Would add Vitest if the API client grows beyond the current `unbox`/`youtubeIdFromUrl` helpers.
-- **CI workflow** — `.github/workflows/e2e.yml` running Playwright on PRs would be the natural next step.
-- **Visual regression** — Percy / Chromatic-style snapshot diffing isn't wired up; the OG card and component grid could benefit.
+## Upstream issues filed
+
+A side effect of building a real consumer against an in-progress API: I found seven real bugs in my own CMS and filed each with a curl repro + a Laravel-shaped suggested fix. Cross-stack ownership.
+
+| # | Title | Status |
+|---|---|---|
+| [kratecms#574](https://github.com/jaballer/kratecms/issues/574) | `meta.*` returned as `[v, v]` arrays instead of scalars | Open — unboxed client-side |
+| [kratecms#575](https://github.com/jaballer/kratecms/issues/575) | CORS preflight missing `Access-Control-Allow-Origin` | Partially merged — code shipped, prod env var pending |
+| [kratecms#576](https://github.com/jaballer/kratecms/issues/576) | `/posts/{slug}` returns 404; detail is id-only | Open — slug-routing workaround in `PostDetailPage` |
+| [kratecms#577](https://github.com/jaballer/kratecms/issues/577) | Query filters silently ignored | Open — client-side filter |
+| [kratecms#578](https://github.com/jaballer/kratecms/issues/578) | SoundCloud `embed_url` is a share URL (blocked by `X-Frame-Options`) | Open — provider transform in [MediaEmbed.tsx](src/components/MediaEmbed.tsx) |
+| [kratecms#579](https://github.com/jaballer/kratecms/issues/579) | `author.email` exposed on public response | Open — never rendered in UI |
+| [kratecms#580](https://github.com/jaballer/kratecms/issues/580) | Public reads return `Cache-Control: no-cache, private` | Open — TanStack Query covers the gap for now |
+| [kratecms#581](https://github.com/jaballer/kratecms/issues/581) | Audio-category posts don't expose the file URL | Open — render path ready in [MediaEmbed.tsx](src/components/MediaEmbed.tsx) |
+
+## How I built this
+
+Built collaboratively with [Claude Code](https://docs.claude.com/en/docs/claude-code/overview) (Anthropic's CLI for Claude). I treated it like a fast pair: it drafted scaffolds, I made the calls on prop API, component boundaries, error UX, focus management, and what to file as upstream issues. The codebase is a real example of AI-assisted senior engineering, which is exactly the workflow modern teams should be comfortable with.
+
+## What's next
+
+- **Slug routing in the API** — once [kratecms#576](https://github.com/jaballer/kratecms/issues/576) lands, the merged-list workaround can be replaced with a direct `/posts/:slug` fetch (one request instead of pages).
+- **Server-side filter + search** — depends on [kratecms#577](https://github.com/jaballer/kratecms/issues/577). The chip UI is ready; just needs a real API behind it.
+- **Native audio player** — depends on [kratecms#581](https://github.com/jaballer/kratecms/issues/581). React side is already wired.
+- **CI workflow** — `.github/workflows/e2e.yml` running Playwright on PRs would be a natural next step.
+- **Visual regression** — the OG card + grid layout could be pinned with Percy or Chromatic-style snapshot diffing.
 
 ## License
 

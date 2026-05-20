@@ -90,16 +90,40 @@ test.describe("Post detail navigation", () => {
     );
   });
 
-  test("an audio-category post with no native audio_url still renders the YouTube fallback", async ({ page }) => {
-    // hiking-bars is an audio post — SoundCloud share URL embed
+  test("an audio post with a native audio_url renders the <audio> player", async ({ page }) => {
+    // /posts/memories ships audio_url + audio_filename after kratecms#589.
+    // This is the user-visible parity fix from kratecms-reader#4.
+    await page.goto("/posts/memories");
+
+    await expect(
+      page.getByRole("heading", { level: 1 }),
+    ).toContainText(/Memories/);
+
+    const audio = page.locator("audio").first();
+    await expect(audio).toBeVisible();
+    await expect(audio).toHaveAttribute("controls", "");
+    // src points at the absolute MP3 URL from the API
+    await expect(audio).toHaveAttribute("src", /\.mp3(\?.*)?$/);
+    // aria-label uses audio_filename when present
+    await expect(audio).toHaveAttribute("aria-label", /Audio:.*Memories/);
+  });
+
+  test("an audio-category post WITHOUT a native audio_url falls back to the embed (SoundCloud)", async ({ page }) => {
+    // hiking-bars has category=audio but audio_url=null — the actual audio
+    // lives on SoundCloud via embed_url. Confirms we don't gate the audio
+    // render on category, and the secondary embed still appears when no
+    // native file is present.
     await page.goto(`/posts/${HIKING_BARS_SLUG}`);
 
-    await expect(page.getByRole("heading", { level: 1 })).toContainText(/Hiking Bars/);
+    await expect(
+      page.getByRole("heading", { level: 1 }),
+    ).toContainText(/Hiking Bars/);
 
-    // Either SoundCloud or audio element will be present once kratecms#581 lands.
-    // For now, the SoundCloud iframe is the embed surface.
+    // No <audio> element (no audio_url to render from)
+    await expect(page.locator("audio")).toHaveCount(0);
+    // SoundCloud iframe is the embed surface
     const iframe = page.locator("iframe").first();
     await expect(iframe).toBeVisible();
-    await expect(iframe).toHaveAttribute("title", /SoundCloud|YouTube/);
+    await expect(iframe).toHaveAttribute("title", /SoundCloud/);
   });
 });
